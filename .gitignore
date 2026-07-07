@@ -1,0 +1,28 @@
+# Node / Frontend
+node_modules/
+.next/
+out/
+build/
+dist/
+.env*.local
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# DB
+*.sqlite3
+*.db
+repomind.db
