@@ -1,4 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks, File, UploadFile
+import shutil
+import os
+import tempfile
+from pathlib import Path
 from sqlalchemy.orm import Session
 from typing import List
 import httpx
@@ -116,6 +120,50 @@ async def create_repository(
     background_tasks.add_task(process_repository, new_repo.id)
 
     # Attach chat_id to response (added as non-db attribute)
+    new_repo.chat_id = new_chat.id
+    return new_repo
+
+@router.post("/upload", response_model=RepositoryResponse, status_code=status.HTTP_201_CREATED)
+async def upload_repository(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Upload a ZIP repository file for analysis.
+    """
+    if not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="Only ZIP files are supported.")
+
+    # Save to a temporary location
+    temp_dir = tempfile.mkdtemp(prefix="repo_upload_")
+    file_path = os.path.join(temp_dir, file.filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    repo_name = file.filename.replace(".zip", "")
+
+    new_repo = Repository(
+        user_id=user_id,
+        name=repo_name,
+        url=f"local://{file_path}"
+    )
+    db.add(new_repo)
+    db.flush()
+
+    new_chat = Chat(
+        user_id=user_id,
+        repository_id=new_repo.id,
+        title=f"Chat — {repo_name}",
+    )
+    db.add(new_chat)
+    db.commit()
+    db.refresh(new_repo)
+    db.refresh(new_chat)
+
+    background_tasks.add_task(process_repository, new_repo.id)
     new_repo.chat_id = new_chat.id
     return new_repo
 

@@ -32,8 +32,15 @@ def process_repository(repo_id: str):
         db.commit()
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            print(f"Cloning {repo.url} into {temp_dir}")
-            subprocess.run(["git", "clone", "--depth", "1", repo.url, temp_dir], check=True, capture_output=True)
+            if repo.url.startswith("local://"):
+                import zipfile
+                zip_path = repo.url.replace("local://", "")
+                print(f"Extracting {zip_path} into {temp_dir}")
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+            else:
+                print(f"Cloning {repo.url} into {temp_dir}")
+                subprocess.run(["git", "clone", "--depth", "1", repo.url, temp_dir], check=True, capture_output=True)
             
             # Step 2: Parse files
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)

@@ -14,6 +14,7 @@ class RepositoryResponse(RepositoryBase):
     id: str
     user_id: str
     status: RepositoryStatus
+    chat_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 

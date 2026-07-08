@@ -1,5 +1,5 @@
 from typing import TypedDict, Annotated, Sequence
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
@@ -53,8 +53,15 @@ def call_model(state: AgentState):
     messages = state["messages"]
     repo_id = state["repo_id"]
     
-    # We could inject repo context into the system prompt here
-    response = model.invoke(messages)
+    system_prompt = f"""You are a helpful expert Repository Assistant. 
+You are currently helping the user understand and analyze their codebase. 
+The current repository ID is: {repo_id}.
+Always use the provided tools to search the codebase and understand the architecture before answering the user's questions. 
+When using tools, you MUST include the repo_id: '{repo_id}' in your tool calls. 
+If the user asks general questions about the repository (e.g., 'how it works', 'architecture'), use the search_codebase tool with broad queries to get started, and formulate a comprehensive response based on the results."""
+
+    messages_with_system = [SystemMessage(content=system_prompt)] + list(messages)
+    response = model.invoke(messages_with_system)
     return {"messages": [response]}
 
 # Build Graph

@@ -85,8 +85,16 @@ async def chat_completion(
                 if getattr(msg, "content", None) and not getattr(msg, "tool_calls", None):
                     # We stream the content token by token if the LLM supports it, 
                     # but here we yield whatever chunks the graph gives us
+                    text_to_yield = ""
                     if isinstance(msg.content, str):
-                        data = json.dumps({"text": msg.content})
+                        text_to_yield = msg.content
+                    elif isinstance(msg.content, list):
+                        for item in msg.content:
+                            if isinstance(item, dict) and item.get("type") == "text":
+                                text_to_yield += item.get("text", "")
+                    
+                    if text_to_yield:
+                        data = json.dumps({"text": text_to_yield})
                         yield f"data: {data}\n\n"
                         await asyncio.sleep(0.01)
 
