@@ -56,27 +56,26 @@ export default function SettingsPage() {
             className="p-6 rounded-2xl bg-white/5 border border-white/10 space-y-6"
           >
             {activeSection === "profile" && (
-              <>
-                <h3 className="text-white font-semibold text-lg">Profile Settings</h3>
-                <div className="space-y-4">
-                  {[
-                    { label: "Display Name", placeholder: "Your name", type: "text" },
-                    { label: "Email", placeholder: "you@example.com", type: "email" },
-                  ].map((field) => (
-                    <div key={field.label}>
-                      <label className="block text-sm text-zinc-400 mb-2">{field.label}</label>
-                      <input
-                        type={field.type}
-                        placeholder={field.placeholder}
-                        className="w-full h-11 px-4 bg-white/5 border border-white/10 rounded-xl text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 transition-all"
-                      />
-                    </div>
-                  ))}
-                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white rounded-xl border-0 mt-2">
-                    Save Changes
-                  </Button>
-                </div>
-              </>
+              <div className="flex justify-center">
+                <UserProfile 
+                  appearance={{
+                    elements: {
+                      rootBox: "w-full",
+                      card: "bg-transparent shadow-none border border-white/10 w-full",
+                      navbar: "hidden", // Hide clerk navbar if we want to use our own, or keep it.
+                      pageScrollBox: "p-0",
+                    },
+                    variables: {
+                      colorBackground: "transparent",
+                      colorText: "white",
+                      colorPrimary: "#9333ea", // purple-600
+                      colorTextSecondary: "#a1a1aa", // zinc-400
+                      colorInputBackground: "rgba(255, 255, 255, 0.05)",
+                      colorInputBorder: "rgba(255, 255, 255, 0.1)",
+                    }
+                  }}
+                />
+              </div>
             )}
 
             {activeSection === "notifications" && (

@@ -22,6 +22,10 @@ def search_codebase(query: str, repo_id: str) -> str:
         if not results:
             return "No relevant code snippets found in vector database."
         return str([res.payload for res in results])
+    except ValueError as e:
+        if "dimension mismatch" in str(e).lower():
+            return "Error: The repository was indexed with a different embedding model dimension. Please re-index the repository to fix this issue."
+        return f"Error searching codebase: {str(e)}"
     except Exception as e:
         return f"Error searching codebase: {str(e)}"
 
