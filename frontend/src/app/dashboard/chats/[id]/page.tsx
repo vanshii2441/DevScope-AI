@@ -14,7 +14,7 @@ interface Message {
 
 export default function ChatPage() {
   const params = useParams();
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     { id: "system-1", role: "assistant", content: "Hello! I am RepoMind AI. I have analyzed this repository. Ask me anything about its architecture, codebase, or how it works." }
   ]);
@@ -46,7 +46,8 @@ export default function ChatPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Authorization": `Bearer ${token}`,
+          ...(userId && { "X-User-Id": userId })
         },
         body: JSON.stringify({ message: userMessage.content })
       });

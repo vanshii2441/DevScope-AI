@@ -3,6 +3,7 @@ import uuid
 import logging
 import tempfile
 import subprocess
+import time
 from pathlib import Path
 from qdrant_client.models import PointStruct
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -12,7 +13,7 @@ from app.core.database import SessionLocal
 from app.models.repository import Repository
 from app.services.vector.qdrant_client import vector_store
 from app.services.graph.neo4j_client import graph_store
-from app.services.ai.gemini_service import gemini_service
+from app.services.ai.gemini_service import gemini_service, QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,9 @@ def process_repository(repo_id: str):
             )
 
             # ── Step 4: Embed & upsert in batches ───────────────────────
-            BATCH_SIZE = 50
+            BATCH_SIZE = 20  # Reduced batch size for rate limits
+            successful_upserts = 0
+            
             for i in range(0, len(all_chunks), BATCH_SIZE):
                 batch = all_chunks[i : i + BATCH_SIZE]
                 texts = [item["text"] for item in batch]
@@ -161,15 +164,27 @@ def process_repository(repo_id: str):
                         for j, item in enumerate(batch)
                     ]
                     vector_store.upsert_vectors(collection_name, points)
+                    successful_upserts += len(points)
                     logger.info(
                         "[Ingestion] Upserted batch %d/%d (%d points)",
                         i // BATCH_SIZE + 1,
                         -(-len(all_chunks) // BATCH_SIZE),
                         len(points),
                     )
+                    
+                    # Throttle between batches to prevent 429s
+                    time.sleep(1)
 
+                except QuotaExceededError as e:
+                    logger.error("Quota permanently exceeded during ingestion for batch %d: %s", i, e)
+                    logger.warning("Graceful fallback: stopping embedding for remaining chunks, but keeping already ingested data.")
+                    break
                 except Exception as e:
                     logger.error("Error generating/upserting embeddings for batch %d: %s", i, e)
+
+            if len(all_chunks) > 0 and successful_upserts == 0:
+                raise RuntimeError("Failed to embed and upsert any chunks due to quota or network issues. Please try again later.")
+
 
             # ── Step 5: Neo4j graph ──────────────────────────────────────
             if graph_store.driver:
@@ -197,10 +212,12 @@ def process_repository(repo_id: str):
         repo.status = RepositoryStatus.COMPLETED
         db.commit()
         logger.info("[Ingestion] repo_id=%s  status=COMPLETED", repo_id)
+        return True
 
     except Exception as e:
         logger.error("Failed to process repository %s: %s", repo_id, e)
         repo.status = RepositoryStatus.FAILED
         db.commit()
+        return False
     finally:
         db.close()

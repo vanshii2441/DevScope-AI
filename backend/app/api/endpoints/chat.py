@@ -5,7 +5,7 @@ from typing import List
 import json
 import asyncio
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from app.core.database import get_db
 from app.models.chat import Chat, Message
 from app.schemas.chat import ChatCreate, ChatResponse, MessageResponse, ChatInput
@@ -75,6 +75,9 @@ async def chat_completion(
                 # Basic mapping to langchain messages
                 if m.role == "user":
                     messages.append(HumanMessage(content=m.content))
+                elif m.role == "assistant":
+                    if m.content:
+                        messages.append(AIMessage(content=m.content))
             
             messages.append(HumanMessage(content=chat_in.message))
 
@@ -82,7 +85,9 @@ async def chat_completion(
             async for chunk in app_agent.astream({"messages": messages, "repo_id": chat.repository_id}, stream_mode="messages"):
                 # chunk is a tuple: (Message, dict)
                 msg = chunk[0]
-                if getattr(msg, "content", None) and not getattr(msg, "tool_calls", None):
+                # Only stream AIMessage content — skip ToolMessage (raw search results)
+                # and HumanMessage echoes
+                if isinstance(msg, AIMessage) and getattr(msg, "content", None) and not getattr(msg, "tool_calls", None):
                     # We stream the content token by token if the LLM supports it, 
                     # but here we yield whatever chunks the graph gives us
                     text_to_yield = ""

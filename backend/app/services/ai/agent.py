@@ -1,15 +1,20 @@
 from typing import TypedDict, Annotated, Sequence
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, END, START
+from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from langchain_core.tools import tool
 
-from app.services.ai.gemini_service import gemini_service
+import logging
+from app.services.ai.gemini_service import gemini_service, QuotaExceededError
 from app.services.vector.qdrant_client import vector_store
 from app.services.graph.neo4j_client import graph_store
+from app.services.ingestion import process_repository
+
+logger = logging.getLogger(__name__)
 
 class AgentState(TypedDict):
-    messages: Sequence[BaseMessage]
+    messages: Annotated[Sequence[BaseMessage], add_messages]
     repo_id: str
 
 @tool
@@ -18,13 +23,40 @@ def search_codebase(query: str, repo_id: str) -> str:
     query_vector = gemini_service.get_embeddings(query)
     try:
         results = vector_store.search(f"repo_{repo_id}", query_vector)
-        # Mocking for now since we don't have real ingestion yet
         if not results:
             return "No relevant code snippets found in vector database."
-        return str([res.payload for res in results])
+        
+        # Format results into readable context for the LLM
+        formatted_chunks = []
+        for i, res in enumerate(results, 1):
+            payload = res.payload or {}
+            file_path = payload.get("file_path", "unknown file")
+            text = payload.get("text", "")
+            # Truncate very long chunks to keep context manageable
+            if len(text) > 2000:
+                text = text[:2000] + "... (truncated)"
+            formatted_chunks.append(
+                f"--- Result {i} ---\n"
+                f"File: {file_path}\n"
+                f"Content:\n{text}"
+            )
+        return "\n\n".join(formatted_chunks)
+    except QuotaExceededError as e:
+        logger.warning(f"Quota exceeded during codebase search for repo {repo_id}: {e}")
+        return "The Gemini API quota has been exceeded. Please notify the user that their embedding quota limits were reached and they should try again later or check their API limits."
     except ValueError as e:
         if "dimension mismatch" in str(e).lower():
-            return "Error: The repository was indexed with a different embedding model dimension. Please re-index the repository to fix this issue."
+            import threading
+            logger.warning(f"Dimension mismatch detected for repo {repo_id}. Re-indexing repository in background...")
+            try:
+                # Start re-indexing in a background thread so we don't block the chat
+                thread = threading.Thread(target=process_repository, args=(repo_id,))
+                thread.start()
+                return "The repository vector database is out of date and requires re-indexing. I have started the indexing process in the background. Please wait a few minutes before asking questions about the codebase."
+            except Exception as reindex_error:
+                logger.error(f"Failed to start background re-indexing for repo {repo_id}: {reindex_error}")
+                return f"Error: Dimension mismatch detected, and failed to start automatic re-indexing: {str(reindex_error)}"
+            
         return f"Error searching codebase: {str(e)}"
     except Exception as e:
         return f"Error searching codebase: {str(e)}"
@@ -60,9 +92,15 @@ def call_model(state: AgentState):
     system_prompt = f"""You are a helpful expert Repository Assistant. 
 You are currently helping the user understand and analyze their codebase. 
 The current repository ID is: {repo_id}.
-Always use the provided tools to search the codebase and understand the architecture before answering the user's questions. 
-When using tools, you MUST include the repo_id: '{repo_id}' in your tool calls. 
-If the user asks general questions about the repository (e.g., 'how it works', 'architecture'), use the search_codebase tool with broad queries to get started, and formulate a comprehensive response based on the results."""
+
+IMPORTANT RULES:
+1. Always use the provided tools to search the codebase and understand the architecture before answering.
+2. When using tools, you MUST include the repo_id: '{repo_id}' in your tool calls.
+3. NEVER return raw tool output, JSON, Python dicts, or payload data to the user. Always synthesize the information into a clear, well-structured, human-readable explanation.
+4. Use markdown formatting (headings, bullet points, code blocks) to make your answers easy to read.
+5. If the user asks general questions (e.g., 'how it works', 'architecture'), use the search_codebase tool with broad queries and then formulate a comprehensive, well-organized response.
+6. When referencing code, use proper code blocks with the language specified.
+7. Focus on explaining concepts, patterns, and architecture — not dumping raw data."""
 
     messages_with_system = [SystemMessage(content=system_prompt)] + list(messages)
     response = model.invoke(messages_with_system)
