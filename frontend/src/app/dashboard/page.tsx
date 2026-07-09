@@ -15,7 +15,7 @@ function timeAgo(dateString: string) {
   const date = new Date(dateString);
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  
+
   if (diffInSeconds < 60) return `${diffInSeconds}s ago`;
   if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
   if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
@@ -39,7 +39,7 @@ export default function DashboardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  
+
   const [recentRepos, setRecentRepos] = useState<any[]>([]);
   const [loadingRepos, setLoadingRepos] = useState(true);
 
@@ -110,7 +110,8 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Upload error:", err);
-      setUploadError("Network error while uploading. Please try again.");
+      const message = err instanceof Error ? err.message : "Unknown error";
+      setUploadError(`Upload failed: ${message}`);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -124,18 +125,18 @@ export default function DashboardPage() {
       </div>
 
       {/* Import Section */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="p-1 rounded-3xl bg-gradient-to-br from-purple-500/20 via-blue-500/20 to-transparent"
       >
         <div className="bg-[#0a0a0a] rounded-[22px] p-8 md:p-12 border border-white/5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-          
+
           <div className="relative z-10 max-w-2xl">
             <h3 className="text-2xl font-semibold text-white mb-4">Analyze a new repository</h3>
             <p className="text-zinc-400 mb-8 text-lg">Paste a GitHub URL or upload a ZIP file to start analyzing the codebase.</p>
-            
+
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-1 group">
                 <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-zinc-500 group-focus-within:text-purple-400 transition-colors">
@@ -150,8 +151,8 @@ export default function DashboardPage() {
                   className="w-full h-14 pl-12 pr-4 bg-white/5 border border-white/10 rounded-2xl text-white placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-transparent transition-all disabled:opacity-50"
                 />
               </div>
-              <Button 
-                size="lg" 
+              <Button
+                size="lg"
                 onClick={handleAnalyze}
                 disabled={isPending || !repoUrl}
                 className="h-14 px-8 rounded-2xl bg-white text-black hover:bg-zinc-200 disabled:opacity-50"
@@ -169,7 +170,7 @@ export default function DashboardPage() {
                 )}
               </Button>
             </div>
-            
+
             {error && (
               <div className="mt-4 text-red-400 text-sm">{error}</div>
             )}
