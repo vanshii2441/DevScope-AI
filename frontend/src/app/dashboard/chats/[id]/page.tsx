@@ -65,16 +65,37 @@ export default function ChatPage() {
       const assistantMessageId = (Date.now() + 1).toString();
       setMessages(prev => [...prev, { id: assistantMessageId, role: "assistant", content: "" }]);
 
+      let buffer = "";
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          if (buffer) {
+             // Process any remaining data
+             const lines = buffer.split("\n\n");
+             for (const line of lines) {
+               if (line.startsWith("data: ")) {
+                 try {
+                   const data = JSON.parse(line.replace("data: ", ""));
+                   if (data.text) assistantMessage += data.text;
+                 } catch(e) {}
+               }
+             }
+             setMessages(prev => 
+                prev.map(m => m.id === assistantMessageId ? { ...m, content: assistantMessage } : m)
+             );
+          }
+          break;
+        }
         
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n\n");
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
         
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const dataStr = line.replace("data: ", "");
+        // The last part might be incomplete, so we keep it in the buffer
+        buffer = parts.pop() || "";
+        
+        for (const part of parts) {
+          if (part.startsWith("data: ")) {
+            const dataStr = part.substring(6);
             try {
               const data = JSON.parse(dataStr);
               if (data.text) {
@@ -88,6 +109,7 @@ export default function ChatPage() {
               }
             } catch (e) {
               // Incomplete chunk, skip
+              console.error("Failed to parse SSE data chunk:", dataStr);
             }
           }
         }
